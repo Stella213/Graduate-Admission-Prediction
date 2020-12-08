@@ -1,0 +1,653 @@
+---
+title: "Group_Proj"
+output: html_document
+---
+
+```{r}
+#install.packages(tidyverse)
+library(tidyverse)
+library(dummies)
+library(ggplot2)
+```
+
+
+```{r}
+#import data and add column name
+dat <- read.csv("all_clean.csv",header = F)
+dat
+```
+```{r}
+names(dat) <- c("rowid","uni_name","major","degree","season","decision","decision_method","decision_date","decision_timestamp","ugrad_gpa","gre_verbal","gre_quant","gre_writing","is_new_gre","gre_subject","status","post_data","post_timestamp","comments")
+names(dat)
+str(dat)
+```
+
+```{r}
+#Prepare the data for analysis
+#delete rows with N/A of important variables
+dat1 <- na.omit(dat, cols = c("decision","ugrad_gpa","gre_verbal","gre_quant","gre_writing","status"))
+
+#delete rows with old GRE examination and GPA greater than 5
+dat2 <- dat1[!(dat1$is_new_gre=="False"| dat1$ugrad_gpa >= 5 | dat1$status ==""),]
+dat2
+```
+```{r}
+#address degree and status
+dat3 <- cbind(dat2, dummy(dat2$degree, sep = "_"),  dummy(dat2$status, sep = "_"))
+dat3$decision <- as.numeric(dat3$decision)
+# decision: 6-Wait listed; 5-Rejected; 4-Other; 3-Interview; 2-Accepted.
+dat3
+#names(dat3)
+#str(dat3)
+```
+
+```{r}
+
+#(we use status_others, degree_ohters as reference)
+ndat <- dat3[,c(1,6,10:13,20,21,23:26)]
+ndat
+
+```
+
+```{r}
+
+names(ndat)
+str(ndat)
+head(ndat)
+```
+
+
+
+```{r}
+#Descriptive Statistics
+summary(ndat)
+cor(ndat)[,1]
+```
+
+#Visualization
+```{r}
+library(dplyr)
+```
+
+```{r}
+dat2
+```
+
+```{r}
+#plot1-major
+
+#plot2-degree distribution
+#barplot(table(dat2$degree),ylab = 'count')
+ggplot(dat2,aes(x=degree)) +
+  geom_bar(stat="count", fill="#f68060", alpha=.6, width=.4)+
+#  geom_text(aes(label=degree), vjust=-0.2)+
+  xlab("")
+'''
+dat2 %>%
+  mutate(name = fct_reorder(degree, '')) %>%
+  ggplot(aes(x=degree)) +
+    geom_bar(stat="identity") +
+    coord_flip() +
+     +
+    theme_bw()
+'''
+```
+```{r}
+#plot3-decision method
+barplot(table(dat2$decision_method),ylab = 'count')
+pie(table(dat2$decision), names(table(dat2$decision)), col=rainbow(length(names(table(dat2$decision)))))
+#plot4-ugrad_gpa
+#plot5-gre
+```
+
+
+```{r}
+
+ggplot(dat2,aes(Conpany,Sale,fill=Year))+
+geom_histogram(stat="identity",position="stack")+
+ggtitle("The Financial Performance of Five Giant")+
+theme_economist(base_size=14)+
+scale_fill_economist()+
+theme(axis.ticks.length=unit(0.5,'cm'))+
+guides(fill=guide_legend(title=NULL))
+
+
+#plot6-status
+barplot(table(dat2$status),ylab = 'count')
+
+
+
+
+
+
+
+
+ggplot(dat2) + aes(x=gre_verbal) + geom_histogram(color= "green", fill="blue", binwidth = 3) +
+  xlab("GRE_verbal") +
+  ylab("Frequency") +
+  ggtitle("Histogram of GRE_verbal")+
+  geom_text(aes(label=Weight), vjust=-0.2)
+
+ggplot(dat2) + aes(x=log(gre_verbal)) + geom_histogram(color= "green", fill="blue", binwidth = 3) +
+  xlab("GRE_verbal") +
+  ylab("Frequency") +
+  ggtitle("Histogram of GRE_verbal")
+
+
+
+ggplot(dat2) + aes(x=gre_verbal+gre_quant) + geom_histogram(color= "green", fill="blue", binwidth = 3) +
+  xlab("Total_GRE") +
+  ylab("Frequency") +
+  ggtitle("Histogram of GRE")
+
+# we could see that the allocation of verbal and total score is similar
+# three box plots didn't show any signficant difference
+ggplot(dat2) +
+  aes(x = as.factor(decision), y = gre_verbal) +
+  geom_boxplot()
+
+ggplot(dat2) +
+  aes(x = as.factor(decision), y = gre_quant) +
+  geom_boxplot()
+
+ggplot(dat2) +
+  aes(x = as.factor(decision), y = gre_writing) +
+  geom_boxplot()
+
+```
+
+
+```{r}
+#Multiple Linear Regression 
+reg.all = lm(decision ~ ., data = ndat)
+summary(reg.all)
+reg.all$rsq
+
+#Drop gre_writing, dat2_American,dat2_International, dat2_International with US Degree because they are insignificant
+#
+reg1 = lm(decision ~ ugrad_gpa + gre_verbal +gre_quant +dat2_MFA +dat2_MS + dat2_PhD, data = ndat)
+summary(reg1)
+
+#even worse
+```
+
+
+
+```{r}
+set.seed(123789)
+number <- sample(nrow(ndat),nrow(ndat)*.8)
+train <- ndat[number,]
+test <- ndat[-number,]
+library(glmnet)
+#from backword, we could select ugrad_gpa,gre_verbal,gre_quant,dat2_PhD,dat2_American,dat2_International with US Degree
+library(leaps)
+bakwd <- regsubsets(decision ~ ., ndat, nvmax = 50, 
+                        method = "backward", really.big = T)
+
+sum_b = summary(bakwd)
+#sum_b
+#sum_b$rsq
+#plot(sum$rsq)
+#in forwad, we select ugrad_gpa,gre_verbal,gre_quant,dat2_PhD,dat2_American,dat2_International with US Degree. same as backwrd, but r2 is low, only 30%, roughly same as the all in model.
+
+forwd <- regsubsets(decision ~ ., ndat, nvmax = 50, 
+                     method = "forward", really.big = T)
+sum_f = summary(forwd)
+sum_f
+#sum_f$rsq
+#plot(sum_f$rsq)
+
+
+train_lm = lm(decision~ugrad_gpa+gre_verbal+gre_quant+dat2_PhD+dat2_American,data = train)
+summary(train_lm)
+lm_pred <- predict(train_lm,data = test)
+
+
+resid.test <- train$decision - lm_pred
+
+MSE.test <- mean(resid.test^2)
+RMSE.test <- sqrt(MSE.test)
+RMSE.test
+
+y.train <- train[,1]
+x.train <- model.matrix(decision~., train)
+y.test <- test[,1]
+x.test <- model.matrix(decision~., test)
+
+lasso.mod <- glmnet(x.train, y.train, alpha=1, thresh = 1e-12)
+plot(lasso.mod, xvar="lambda", label = TRUE)
+
+cv.out1 <- cv.glmnet(x.train, y.train, alpha = 1)
+plot(cv.out1)
+bestlam1 <- cv.out1$lambda.min
+bestlam1
+log(bestlam1)
+
+lasso.pred <- predict(lasso.mod, s=bestlam1, 
+                      newx = x.test)
+MSE.L.CV <- mean((lasso.pred-y.test)^2)
+RMSE.L.CV <- MSE.L.CV^0.5
+RMSE.L.CV
+RMSE.test
+#by comparing the RMSE by regular lm and lasso, 2 mehods are similar.
+
+
+
+```
+
+
+
+```{r}
+y <- ndat[,1]
+x <- model.matrix(decision~., ndat)
+lasso.mod.best <- glmnet(x, y, alpha = 1, lambda = bestlam1)
+coef(lasso.mod.best)
+#
+#  Some of the coefficients in the "best" lasso model
+#     are equal to 0.
+#
+#
+#  Now, compute summary statistics on using the lasso model 
+#    over the entire data set
+#
+newX <- cbind(1,x)
+yhat1 <- newX%*%coef(lasso.mod.best)[,1]
+RSS.L.best <- sum((y - yhat1)^2)
+RSS.L.best
+MSE.L.best <- RSS.L.best/(lasso.mod.best$nobs-lasso.mod.best$df)
+MSE.L.best
+RMSE.L.best <- MSE.L.best^0.5
+RMSE.L.best
+# didn't get any better compare with the lm
+
+
+```
+
+
+
+
+
+```{r}
+#2020.06.03
+
+#we choose top 10 University or we only use accept/reject to run some classification model.
+#we use dat_top10 and dat5 to do the further analysis
+
+#
+dat4 <- dat3[dat3$uni_name=="Princeton University"| dat3$uni_name=="Harvard University" | dat3$uni_name=="Colubia University" | dat3$uni_name=="Yale University"| dat3$uni_name=="Massachusetts Institute Of Technology (MIT)
+" | dat3$uni_name=="Stanford University" | dat3$uni_name=="University of chicago"| dat3$uni_name=="University of Pennsylvania"| dat3$uni_name=="Northwestern University"| dat3$uni_name=="Duke University",]
+dat_top10 <- dat4[,c(6,10:13,20,21,23:26)]
+
+
+# 2 means "Accepted" 5 means "Rejected"
+dat5 <- ndat[ndat$decision == 5  | ndat$decision == 2,]
+
+dat5[dat5$decision == 2,1] <- 1
+dat5[dat5$decision == 5,1] <- 0
+
+
+
+#  Checking to see what percentage and number got accept
+#
+mean(dat5$decision)
+d.count <- table(dat5$decision)
+d.count
+d.perc <- table(dat$decision)/nrow(dat5)
+d.perc
+#
+#  Build a new training and test data sets
+acp <- subset(dat5, dat5$decision == 1)
+rej <- subset(dat5, dat5$decision == 0)
+
+#  Now create training and test data sets
+set.seed(112233)
+#
+#  Randomly select 900 numbers from each group of 
+#    of numbers (1-->2293 and 0-->1857)
+#
+train.acp <- sample(1:nrow(acp),900)
+train.rej <- sample(1:nrow(rej),900)
+#
+#
+dat.train <- rbind(acp[train.acp,],rej[train.rej,])
+#str(dat.train)
+#dim(dat.train)
+#
+#
+newacp <- acp[-train.acp,]
+test.acp <- newacp[sample(1:nrow(newacp),1186),]
+#
+dat.test <- rbind(test.acp, rej[-train.rej,])
+#
+#  Check results....
+#
+d.count.test <- table(dat.test$decision)
+d.count.test
+mean(dat.test$decision)
+mean(dat5$decision)
+#
+
+#  Remove some not needed stuff
+#
+rm(d.count,d.perc,acp,rej,train.acp,train.rej,newacp,test.acp )
+#
+
+```
+
+```{r}
+#
+#  Logistic Regression
+cor(dat5)[1,]
+#
+#  Run a logistic regression with the three most 
+#    highly correlated variables
+#  Note the modeling syntax
+#
+logreg <- glm(decision ~ ., data = dat.train, 
+               family = "binomial")
+summary(logreg)
+#
+#
+#get the fitted values by using the predict" command
+yhat.train <- predict(logreg, dat.train, 
+                      type = "response")
+#
+#  Compare these predicted values for y to 
+#   the actual values
+#
+yhat.train.plus.act <- cbind(yhat.train, 
+                             dat.train$decision)
+#yhat.train.plus.act[1:20,]
+#
+#  Use the ifelse command with a cutoff value of 0.5 
+#   to do this. 
+#
+yhat.train.class <- ifelse(yhat.train > 0.5, 1, 0)
+#yhat.train.class[1:20]
+#
+tab.lr1.train <- table(dat.train$decision, 
+                       yhat.train.class, 
+                       dnn = c("Actual","Predicted"))
+tab.lr1.train
+
+
+# make the forecasts on the test data.
+#
+yhat.test <- predict(logreg, dat.test, 
+                     type = "response") 
+
+yhat.test.class <- ifelse(yhat.test > 0.5, 1, 0)
+#
+#  Build a confusion matrix of results.
+#
+tab.lr1.test <- table(dat.test$decision, 
+                      yhat.test.class, 
+                      dnn = c("Actual","Predicted"))
+tab.lr1.test
+#
+#  Compute the test error
+#
+mean(yhat.test.class != dat.test$decision)
+mean(yhat.train.class != dat.train$decision)
+#test error is smaller than train error, interesting...
+
+
+
+# Adjusting the Success Cut-off Value
+
+
+#let's capture error rates for 99 cutoff values 0.01 to 0.99
+#
+#  First set up some ranges to capture informatin
+#
+overall_err <- 1:99
+class1_err <- 1:99
+class0_err <- 1:99
+#
+#  The run a loop that computes error rates at 
+#    every value of the cutoff probability, val
+#
+for (i in 1:99){
+  val <- i/100
+  yhat.test.class <- ifelse(yhat.test > val, 1, 0)
+  overall_err[i] <- mean(dat.test$decision 
+                         != yhat.test.class)
+  class1_err[i] <- mean(dat.test$decision[1:900] 
+                        != yhat.test.class[1:900])
+  class0_err[i] <- mean(dat.test$decision[901:2143] 
+                        != yhat.test.class[901:2143])
+}
+#
+#  Check out Class 0 and Class 1 error rates  
+#
+class1_err[1:10]
+class0_err[1:10]
+#
+#  Plot these values:  the chart shows the 
+#    class 0 and class 1 error rates for different
+#    cutoff probabilities
+#
+xrange <- 1:99/100
+plot(xrange, class0_err, xlab = "Cutoff Value", 
+     ylab = "Error Rate", col = "Red", type = "b")
+#we can choose 0.7 as our cut-off value
+
+#  This next section is an example of a lift chart
+#    A commonly used visual metric for classifiers.
+#
+#  A lift chart is a plot of the classifier's 
+#    Sensitivity versus the Class 0 Error Rate
+#  
+#  Definitions:
+#    Sensitivity = 1 - Class 1 Error Rate
+#    Specificity = 1 - Class 0 Error Rate
+#
+sensit = 1 - class1_err
+plot(class0_err, sensit, xlab = "Class 0 Error Rate",
+     ylab = "Sensitivity = 1 - Class 1 Error Rate", 
+     col = "red")
+#
+#  Lift Charts are a common way to visually disply
+#    the quality of a classifier.
+#  AUC = area under curve, can be computed and
+#    measures predictors' quality
+#
+#  An estimate of the AUC can be computed here
+#
+AUC <- sum(sensit)*0.01
+AUC
+#
+
+
+```
+
+```{r}
+#  
+#  K-Nearest Neighbor (kNN) classifier
+library(class)
+#
+#  Set data to up to run kNN 
+dat.train.x <- dat.train[,2:11]
+dat.train.y <- dat.train[,1]
+dat.test.x <- dat.test[,2:11]
+dat.test.y <- dat.test[,1]
+#
+#  Normalize the data and check results
+#
+dat.train.x.n <- scale(dat.train.x)
+dat.test.x.n <- scale(dat.test.x)
+
+#drop dat2_MFA column
+dat.train.x.n <- subset(dat.train.x.n, select = -c(dat2_MFA) )
+dat.test.x.n <-subset(dat.test.x.n, select = -c(dat2_MFA) )
+
+#  Now set up a loop to run a bunch kNNs
+#    with the normalized data
+#  knn.err keeps track of the errors
+#
+knn.err <- 1:50
+xrange <- 1:50
+for (j in 1:99) {
+  if (j %% 2 != 0) {
+    xrange[(j+1)/2] <- j
+    out <- knn(dat.train.x.n, dat.test.x.n, 
+               dat.train.y, j)
+    knn.err[(j+1)/2] <- mean(out != dat.test.y)
+  }
+}
+#
+#  Check what was obtained
+#
+xrange
+knn.err
+#
+#  Plot the errors versus k
+#
+plot(xrange, knn.err, xlab = "Value of K (K odd)",
+     ylab = "Error from KNN")
+
+#we choose k =59
+out59 <- knn(dat.train.x.n, dat.test.x.n, dat.train.y, k=59)
+tab.knn59 <- table(dat.test.y, out59,
+                   dnn = c("Actual", "Predicted"))
+tab.knn59
+knn59.err <- mean(dat.test.y != out59)
+knn59.err
+
+```
+
+```{r}
+# Support Vector Machine
+
+#install.packages("e1071")
+library(e1071)
+
+#  Run the SVM process on randomly selected values 
+#    of cost and gamma
+#
+svmfit2.1 <- svm(decision ~ .-dat2_MFA, 
+                 data = dat.train, kernel = "radial", scale = T,
+                 gamma = 1, cost = 1)
+summary(svmfit2.1)
+
+yhat2.1 <- svmfit2.1$fitted
+table(truth = dat.train$decision, 
+      predict = yhat2.1)
+#
+ypred2.1 <- predict(svmfit2.1, dat.test)
+table(truth = dat.test$decision, predict = ypred2.1)
+#
+#  Not so well on the test data...
+
+#  Run cross validation
+#
+set.seed(123321)
+tune.out2 <- tune(svm, decision ~ .-dat2_MFA, data = dat.train, 
+                  kernel = "radial", scale = T,
+                  ranges = list(cost = c(0.01, 
+                                         0.1, 1, 10, 
+                                         100, 1000), 
+                                gamma = c(0.5, 1, 2, 3, 4)))
+summary(tune.out2)
+#
+#  Grab the best model
+#
+tune.out2$best.parameters
+bestmod2 <- tune.out2$best.model
+yhat.best2 <- bestmod2$fitted
+table(truth = dat.train$decision, 
+      predict = yhat.best2)
+#
+ypred.best2 <- predict(bestmod2, dat.test)
+table(truth = dat.test$decision, 
+      predict = ypred.best2)
+mean(dat.test$decision != ypred.best2)
+#
+
+```
+
+
+
+
+```{r}
+
+#  Classification Tree Modeling
+#  
+#install.packages("tree")
+library(tree)
+#
+#  In classification tree models, one assumes that 
+#    the Y variable is qualitative
+#  Thus, convert the Y-variable to a "factor"
+#
+dat.train[,1] <- as.factor(dat.train[,1])
+dat.test[,1] <- as.factor(dat.test[,1])
+#
+#  Build the first classification tree
+#
+tree1 <- tree(decision~., data = dat.train)
+summary(tree1)
+#
+#  Q:  What does the summary say?
+#
+#  It is likely helpful to understand, what does the 
+#    tree look like?
+#
+#  Create a plot of the tree just built.
+#
+plot(tree1)
+text(tree1, pretty = 0)
+#
+#  Use the tree to make predictions on the training
+#    and test data
+#
+tree.pred.tr <- predict(tree1, dat.train, type = "class")
+table(dat.train$Acpt_Offer, tree.pred.tr,
+      dnn = c("Actual", "Predicted"))
+mean(dat.train$Acpt_Offer != tree.pred.tr)
+tree.pred.tst <- predict(tree1, dat.test, type = "class")
+table(dat.test$Acpt_Offer, tree.pred.tst,
+      dnn = c("Actual", "Predicted"))
+mean(dat.test$Acpt_Offer != tree.pred.tst)
+#
+#  Lets prune!
+#
+prune1 <- prune.misclass(tree1)
+names(prune1)
+#
+#  Plot the results of the prune
+#
+plot(prune1)
+plot(prune1$size, prune1$dev, xlab = "Size of Tree",
+     ylab = "Deviation")
+#
+#  The plot can help to identify the right tree size
+#    smaller is, of course, better from the robustness
+#    perspective
+#
+#  If the tree size is specified the result of the
+#    command is a tree!
+#
+prune.tree1 <- prune.misclass(tree1, best = 6)
+summary(prune.tree1)
+prune.tree1
+plot(prune.tree1)
+text(prune.tree1, pretty = 0)
+#
+#  Now that there are two trees, tree1 and prune.tree1
+#    compare predictions on the test data
+#
+tree1.pred <- predict(tree1, dat.test, type = "class")
+table(dat.test$Acpt_Offer, tree1.pred,
+      dnn = c("Actual", "Predicted"))
+mean(dat.test$Acpt_Offer != tree1.pred)
+pt1.pred <- predict(prune.tree1, dat.test, type = "class")
+table(dat.test$Acpt_Offer, pt1.pred,
+      dnn = c("Actual", "Predicted"))
+mean(dat.test$Acpt_Offer != pt1.pred)
+#
+```
+
+
+
+
